@@ -1,6 +1,0 @@
-baseURL = 'http://example.org/'
-languageCode = 'sugar'
-title = 'sugar'
-theme = 'hugo-book'
-[params]
-  BookSection = 'book'
