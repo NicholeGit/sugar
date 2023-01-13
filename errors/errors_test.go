@@ -140,7 +140,7 @@ func TestE(t *testing.T) {
 	}
 
 	t.Run("panic with no valid arguments", func(t *testing.T) {
-		assert.Panics(t, func() { E() })
+		assert.Panics(t, func() { _ = E() })
 	})
 
 	t.Run("invalid type", func(t *testing.T) {
