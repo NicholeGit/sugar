@@ -1,14 +1,30 @@
 package iter
 
 import (
-	"errors"
+	"fmt"
 	"strconv"
 	"sync/atomic"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func ExampleIterator() {
+	input := []int{1, 2, 3, 4}
+	iterator := Iterator[int]{
+		MaxGoroutines: len(input) / 2,
+	}
+
+	iterator.ForEach(input, func(v *int) {
+		if *v%2 != 0 {
+			*v = -1
+		}
+	})
+
+	fmt.Println(input)
+	// Output:
+	// [-1 2 -1 4]
+}
 
 func TestIterator(t *testing.T) {
 	t.Parallel()
@@ -21,7 +37,7 @@ func TestIterator(t *testing.T) {
 		// iter.Concurrency > numInput case that updates iter.Concurrency
 		iterator.ForEachIdx([]int{1, 2, 3}, func(i int, t *int) {})
 
-		assert.Equal(t, iterator.MaxGoroutines, 999)
+		require.Equal(t, iterator.MaxGoroutines, 999)
 	})
 
 	t.Run("allows more than defaultMaxGoroutines() concurrent tasks", func(t *testing.T) {
@@ -147,164 +163,6 @@ func TestForEach(t *testing.T) {
 			expected[i] = 1
 		}
 		require.Equal(t, expected, ints)
-	})
-}
-
-func TestMap(t *testing.T) {
-	t.Parallel()
-
-	t.Run("empty", func(t *testing.T) {
-		t.Parallel()
-		f := func() {
-			ints := []int{}
-			Map(ints, func(val *int) int {
-				panic("this should never be called")
-			})
-		}
-		require.NotPanics(t, f)
-	})
-
-	t.Run("panic is propagated", func(t *testing.T) {
-		t.Parallel()
-		f := func() {
-			ints := []int{1}
-			Map(ints, func(val *int) int {
-				panic("super bad thing happened")
-			})
-		}
-		require.Panics(t, f)
-	})
-
-	t.Run("mutating inputs is fine, though not recommended", func(t *testing.T) {
-		t.Parallel()
-		ints := []int{1, 2, 3, 4, 5}
-		Map(ints, func(val *int) int {
-			*val += 1
-			return 0
-		})
-		require.Equal(t, []int{2, 3, 4, 5, 6}, ints)
-	})
-
-	t.Run("basic increment", func(t *testing.T) {
-		t.Parallel()
-		ints := []int{1, 2, 3, 4, 5}
-		res := Map(ints, func(val *int) int {
-			return *val + 1
-		})
-		require.Equal(t, []int{2, 3, 4, 5, 6}, res)
-		require.Equal(t, []int{1, 2, 3, 4, 5}, ints)
-	})
-
-	t.Run("huge inputs", func(t *testing.T) {
-		t.Parallel()
-		ints := make([]int, 10000)
-		res := Map(ints, func(val *int) int {
-			return 1
-		})
-		expected := make([]int, 10000)
-		for i := 0; i < 10000; i++ {
-			expected[i] = 1
-		}
-		require.Equal(t, expected, res)
-	})
-}
-
-func TestMapErr(t *testing.T) {
-	t.Parallel()
-
-	t.Run("empty", func(t *testing.T) {
-		t.Parallel()
-		f := func() {
-			ints := []int{}
-			res, err := MapErr(ints, func(val *int) (int, error) {
-				panic("this should never be called")
-			})
-			require.NoError(t, err)
-			require.Equal(t, ints, res)
-		}
-		require.NotPanics(t, f)
-	})
-
-	t.Run("panic is propagated", func(t *testing.T) {
-		t.Parallel()
-		f := func() {
-			ints := []int{1}
-			_, _ = MapErr(ints, func(val *int) (int, error) {
-				panic("super bad thing happened")
-			})
-		}
-		require.Panics(t, f)
-	})
-
-	t.Run("mutating inputs is fine, though not recommended", func(t *testing.T) {
-		t.Parallel()
-		ints := []int{1, 2, 3, 4, 5}
-		res, err := MapErr(ints, func(val *int) (int, error) {
-			*val += 1
-			return 0, nil
-		})
-		require.NoError(t, err)
-		require.Equal(t, []int{2, 3, 4, 5, 6}, ints)
-		require.Equal(t, []int{0, 0, 0, 0, 0}, res)
-	})
-
-	t.Run("basic increment", func(t *testing.T) {
-		t.Parallel()
-		ints := []int{1, 2, 3, 4, 5}
-		res, err := MapErr(ints, func(val *int) (int, error) {
-			return *val + 1, nil
-		})
-		require.NoError(t, err)
-		require.Equal(t, []int{2, 3, 4, 5, 6}, res)
-		require.Equal(t, []int{1, 2, 3, 4, 5}, ints)
-	})
-
-	err1 := errors.New("error1")
-	err2 := errors.New("error1")
-
-	t.Run("error is propagated", func(t *testing.T) {
-		t.Parallel()
-		ints := []int{1, 2, 3, 4, 5}
-		res, err := MapErr(ints, func(val *int) (int, error) {
-			if *val == 3 {
-				return 0, err1
-			}
-			return *val + 1, nil
-		})
-		require.ErrorIs(t, err, err1)
-		require.Equal(t, []int{2, 3, 0, 5, 6}, res)
-		require.Equal(t, []int{1, 2, 3, 4, 5}, ints)
-	})
-
-	t.Run("multiple errors are propagated", func(t *testing.T) {
-		t.Parallel()
-		ints := []int{1, 2, 3, 4, 5}
-		res, err := MapErr(ints, func(val *int) (int, error) {
-			if *val == 3 {
-				return 0, err1
-			}
-			if *val == 4 {
-				return 0, err2
-			}
-			return *val + 1, nil
-		})
-		require.ErrorIs(t, err, err1)
-		require.ErrorIs(t, err, err2)
-		require.Equal(t, []int{2, 3, 0, 0, 6}, res)
-		require.Equal(t, []int{1, 2, 3, 4, 5}, ints)
-	})
-
-	t.Run("huge inputs", func(t *testing.T) {
-		t.Parallel()
-		ints := make([]int, 10000)
-		res := Map(ints, func(val *int) int {
-			return 1
-		})
-		expected := make([]int, 10000)
-		for i := 0; i < 10000; i++ {
-			expected[i] = 1
-		}
-		require.Equal(t, expected, res)
 	})
 }
 
